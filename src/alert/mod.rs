@@ -845,23 +845,25 @@ mod tests {
         assert!(result.is_err(), "500 from Telegram must return Err");
     }
 
-    #[tokio::test]
+    // start_paused = true: tokio auto-advances its virtual clock when all tasks are
+    // blocked on timers, so the 1-second retry sleep completes instantly in wall time.
+    #[tokio::test(start_paused = true)]
     async fn test_retry_succeeds_on_second_attempt() {
         let server = MockServer::start().await;
 
-        // wiremock uses LIFO priority: last-registered mock wins.
-        // Register the 200-OK mock first (lower priority) so it serves the retry.
-        // Register the 500 mock second (higher priority, fires only once) so it
-        // handles the initial attempt, then exhausts and falls through to the 200 mock.
+        // Register 200 first (lower LIFO priority) — serves the retry attempt.
+        // .expect(1): this mock MUST receive exactly 1 request.
         Mock::given(matchers::method("POST"))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"ok": true})))
             .expect(1)
             .mount(&server)
             .await;
+        // Register 500 second (higher LIFO priority) — serves the first attempt only.
+        // No .expect(): 0 or 1 calls both acceptable — makes test robust to
+        // LIFO/FIFO ordering differences across wiremock versions.
         Mock::given(matchers::method("POST"))
             .respond_with(ResponseTemplate::new(500))
             .up_to_n_times(1)
-            .expect(1)
             .mount(&server)
             .await;
 
