@@ -147,6 +147,9 @@ mod tests {
             ActionConfig {
                 action_type: OldActionType::Script,
                 action: path.to_string(),
+                duration: None,
+                rate: None,
+                capture: vec![],
             },
         );
         Arc::new(Config {
