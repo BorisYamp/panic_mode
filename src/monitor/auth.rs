@@ -6,7 +6,7 @@ use std::fs::File;
 use std::io::{BufRead, BufReader, Seek, SeekFrom};
 use std::time::SystemTime;
 use regex::Regex;
-use chrono::{DateTime, Local, NaiveDateTime, TimeZone};
+use chrono::{DateTime, Datelike, Local, NaiveDateTime, TimeZone};
 
 #[derive(Clone)]
 pub struct AuthMonitor {

@@ -49,10 +49,10 @@ impl Action for ProcessAction {
         let whitelist = self.whitelist.clone();
 
         tokio::task::spawn_blocking(move || {
-            use sysinfo::{ProcessesToUpdate, System};
+            use sysinfo::System;
 
             let mut system = System::new();
-            system.refresh_processes(ProcessesToUpdate::All, true);
+            system.refresh_processes();
 
             let mut processes: Vec<_> = system.processes().values().collect();
             processes.sort_by(|a, b| {
@@ -65,7 +65,7 @@ impl Action for ProcessAction {
                 .iter()
                 .filter(|p| {
                     let pid = p.pid().as_u32();
-                    let name = p.name().to_string_lossy().to_lowercase();
+                    let name = p.name().to_string().to_lowercase();
                     // Skip our own process
                     if pid == own_pid {
                         return false;
@@ -100,14 +100,14 @@ impl Action for ProcessAction {
                     if libc::kill(pid, libc::SIGSTOP) == 0 {
                         tracing::warn!(
                             "FROZEN: {} (pid {}, cpu {:.1}%)",
-                            proc.name().to_string_lossy(),
+                            proc.name(),
                             pid,
                             proc.cpu_usage()
                         );
                     } else {
                         tracing::warn!(
                             "Failed to freeze {} (pid {}): permission denied or process gone",
-                            proc.name().to_string_lossy(),
+                            proc.name(),
                             pid
                         );
                     }
@@ -116,7 +116,7 @@ impl Action for ProcessAction {
                 {
                     tracing::warn!(
                         "SIGSTOP not supported on this platform, skipping {} (pid {})",
-                        proc.name().to_string_lossy(),
+                        proc.name(),
                         pid
                     );
                 }

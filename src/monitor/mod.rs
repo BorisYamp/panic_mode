@@ -240,7 +240,7 @@ impl MonitorEngine {
             memory:   unwrap_monitor(memory_result,  "Memory"),
             network:  unwrap_monitor(network_result, "Network"),
             auth:     unwrap_monitor(auth_result,    "Auth"),
-            disk:     disk_result.unwrap_or_else(|e| {
+            disk:     disk_result.unwrap_or_else(|e: anyhow::Error| {
                           tracing::error!("Disk monitor error: {}", e);
                           DiskMetrics::default()
                       }),

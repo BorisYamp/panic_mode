@@ -9,6 +9,7 @@ use tokio::signal;
 use tokio::time::{sleep, timeout, Duration};
 use tokio_util::sync::CancellationToken;
 use futures::FutureExt; // for catch_unwind
+use tracing_subscriber::prelude::*;
 
 mod config;
 mod monitor;
@@ -602,6 +603,7 @@ async fn run_alert_task(
             Some(alert) = rx.recv() => {
                 let dispatcher = dispatcher.clone();
                 let alert = alert.clone();
+                let alert_for_log = alert.clone();
                 let handle = tokio::spawn(async move {
                     dispatcher.send(&alert).await
                 });
@@ -614,16 +616,16 @@ async fn run_alert_task(
                     }
                     Ok(Ok(Err(e))) => {
                         error!("Failed to send alert: {}", e);
-                        eprintln!("ALERT SEND FAILED: {:?} - Error: {}", alert, e);
+                        eprintln!("ALERT SEND FAILED: {:?} - Error: {}", alert_for_log, e);
                     }
                     Ok(Err(e)) => {
                         error!("Alert sending panicked: {}", e);
-                        eprintln!("ALERT SEND PANICKED: {:?}", alert);
+                        eprintln!("ALERT SEND PANICKED: {:?}", alert_for_log);
                     }
                     Err(_) => {
                         error!("Alert sending timed out");
                         abort_handle.abort();
-                        eprintln!("ALERT SEND TIMEOUT: {:?}", alert);
+                        eprintln!("ALERT SEND TIMEOUT: {:?}", alert_for_log);
                     }
                 }
             }
@@ -653,9 +655,9 @@ async fn run_self_check_task(
                 break;
             }
             _ = sleep(SELF_CHECK_INTERVAL) => {
-                let config = config.clone();
+                let config_for_health = config.clone();
                 let check_result = tokio::task::spawn_blocking(move || {
-                    check_self_health(pid, &config)
+                    check_self_health(pid, &config_for_health)
                 }).await;
 
                 match check_result {

@@ -115,17 +115,17 @@ impl CpuMonitor {
     }
     
     fn get_top_processes(&self) -> Result<Vec<ProcessInfo>> {
-        use sysinfo::{System, ProcessRefreshKind};
-        
+        use sysinfo::System; // ProcessRefreshKind / refresh_processes_specifics API changed in sysinfo 0.30
+
         let mut sys = System::new();
-        sys.refresh_processes_specifics(ProcessRefreshKind::everything());
+        sys.refresh_processes();
         
         let mut processes: Vec<_> = sys.processes()
             .iter()
             .map(|(pid, process)| {
                 ProcessInfo {
                     pid: pid.as_u32(),
-                    name: process.name().to_string_lossy().to_string(),
+                    name: process.name().to_string(),
                     cpu_percent: process.cpu_usage(),
                     memory_mb: process.memory() / 1024,
                 }

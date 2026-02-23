@@ -146,7 +146,7 @@ async fn handle_connection(
     let mut lines = BufReader::new(reader).lines();
 
     // Одно соединение = одна команда (keep-alive не нужен)
-    let response = if let Ok(Some(line)) = tokio::time::timeout(
+    let response = if let Ok(Ok(Some(line))) = tokio::time::timeout(
         Duration::from_secs(5),
         lines.next_line(),
     ).await {

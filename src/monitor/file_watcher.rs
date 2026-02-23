@@ -42,7 +42,7 @@ impl FileWatcher {
                         tokio::spawn(async move {
                             let mut counts = event_counts.write().await;
                             counts.entry(path_str.clone())
-                                .and_modify(|pe| pe.events.push(Instant::now()))
+                                .and_modify(|pe: &mut PathEvents| pe.events.push(Instant::now()))
                                 .or_insert(PathEvents {
                                     events: vec![Instant::now()],
                                     last_cleanup: Instant::now(),

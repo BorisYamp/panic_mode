@@ -15,7 +15,7 @@ impl MemoryMonitor {
     
     pub fn collect(&mut self) -> Result<MemoryMetrics> {
         // Use sysinfo for cross-platform compatibility and reliability
-        use sysinfo::{System, SystemExt};
+        use sysinfo::System; // SystemExt was removed in sysinfo 0.30; methods are now directly on System
         
         let mut sys = System::new_all();
         sys.refresh_memory();
