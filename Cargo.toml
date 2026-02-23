@@ -20,7 +20,7 @@ path = "src/bin/panicmode-ctl.rs"
 [dependencies]
 # Async runtime
 tokio = { version = "1.35", features = ["full"] }
-tokio-util = { version = "0.7" }  # "sync" feature does not exist in tokio-util; CancellationToken is available without it
+tokio-util = { version = "0.7", features = ["rt"] }  # "rt" feature required for CancellationToken; original had ["sync"] which doesn't exist
 futures = "0.3"
 async-trait = "0.1"
 

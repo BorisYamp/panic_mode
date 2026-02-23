@@ -10,8 +10,8 @@ pub struct FileWatcher {
     // Path -> event count within the aggregation window
     event_counts: Arc<RwLock<HashMap<String, PathEvents>>>,
     
-    // notify watcher
-    _watcher: Box<dyn Watcher>,
+    // notify watcher (Send+Sync bounds required for tokio::spawn)
+    _watcher: Box<dyn Watcher + Send + Sync>,
     
     // Configuration
     max_events_per_path: usize,
