@@ -1,0 +1,156 @@
+/// Path: PanicMode/exampels/minimal.yaml
+# PanicMode Quick Start
+
+## Prerequisites
+
+- Linux server (Ubuntu 22.04+ or similar)
+- Root or sudo access
+- Rust installed (`curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh`)
+
+## Step 1: Get Telegram Bot Token (Free & Easy!)
+
+1. Open Telegram and search for `@BotFather`
+2. Send `/newbot` and follow instructions
+3. Save the bot token (looks like `1234567890:ABCdefGHIjklMNOpqrsTUVwxyz`)
+4. Send any message to your new bot
+5. Get your chat ID:
+```bash
+   curl https://api.telegram.org/bot<YOUR_BOT_TOKEN>/getUpdates
+```
+   Look for `"chat":{"id":123456789}` - that's your chat ID
+
+## Step 2: Configure PanicMode
+
+1. Copy the example config:
+```bash
+   cp examples/basic.yaml config.yaml
+```
+
+2. Edit `config.yaml` and replace:
+   - `YOUR_BOT_TOKEN` with your Telegram bot token
+   - `YOUR_TELEGRAM_CHAT_ID` with your chat ID (from step 1)
+   - `myserver-alerts` with a unique topic name (for ntfy)
+
+## Step 3: Build & Run
+```bash
+# Build in release mode
+cargo build --release
+
+# Run with your config
+sudo ./target/release/panicmode config.yaml
+```
+
+## Step 4: Test It!
+
+### Test Telegram alerts:
+Send yourself a test by temporarily setting CPU threshold very low:
+```yaml
+monitors:
+  - name: "Test Alert"
+    type: "cpu_usage"
+    threshold: 1  # Will trigger immediately
+    duration: "5s"
+    actions:
+      - alert_critical
+```
+
+### Test SSH bruteforce detection:
+Try 6 failed SSH attempts:
+```bash
+for i in {1..6}; do ssh wronguser@localhost; done
+```
+
+## Alternative: Ntfy-only Setup (No Telegram needed)
+
+If you prefer Ntfy push notifications:
+
+1. Visit https://ntfy.sh
+2. Choose a unique topic name (e.g., `myserver-abc123`)
+3. Subscribe to it in the Ntfy app or web
+4. In `config.yaml`, disable Telegram and use only Ntfy:
+```yaml
+integrations:
+  telegram:
+    enabled: false
+    bot_token: ""
+    chat_id: ""
+  
+  ntfy:
+    enabled: true
+    server: "https://ntfy.sh"
+    topic: "myserver-abc123"  # Your unique topic
+```
+
+## Minimal Config (Telegram only)
+
+Simplest working config:
+```yaml
+performance:
+  cpu_limit: 5.0
+  memory_limit_mb: 50
+  check_interval: "5s"
+
+monitors:
+  - name: "High CPU"
+    type: "cpu_usage"
+    threshold: 90
+    duration: "30s"
+    actions: [alert_critical]
+
+actions: {}
+
+alerts:
+  critical:
+    - channel: "telegram"
+      chat_id: "YOUR_CHAT_ID"
+
+integrations:
+  telegram:
+    enabled: true
+    bot_token: "YOUR_BOT_TOKEN"
+    chat_id: "YOUR_CHAT_ID"
+```
+
+## Install as System Service
+```bash
+# Copy binary
+sudo cp target/release/panicmode /usr/local/bin/
+
+# Copy config
+sudo mkdir -p /etc/panicmode
+sudo cp config.yaml /etc/panicmode/
+
+# Install systemd service
+sudo cp panicmode.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable panicmode
+sudo systemctl start panicmode
+
+# Check status
+sudo systemctl status panicmode
+sudo journalctl -u panicmode -f
+```
+
+## Troubleshooting
+
+### "Failed to parse config"
+- Check YAML syntax (indentation matters!)
+- Make sure all required fields are filled
+
+### "Telegram integration disabled"
+- Verify `enabled: true` in integrations.telegram
+- Check bot_token and chat_id are correct
+
+### "Permission denied" on /proc
+- Run with sudo/root privileges
+
+### High CPU usage from PanicMode itself
+- Increase `check_interval` (e.g., to "10s")
+- Disable heavy monitors you don't need
+
+## Next Steps
+
+- Read `examples/advanced.yaml` for more features
+- Set up email alerts for backups
+- Configure file monitoring for your apps
+- Adjust thresholds based on your server

@@ -1,0 +1,363 @@
+# =============================================================================
+# PanicMode: Main Configuration
+# =============================================================================
+#
+# Этот файл определяет ЧТО мониторить и КОГДА реагировать.
+#
+# Документация: https://github.com/BorisYamp/panicmode
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Storage (SQLite incidents database, snapshots, logs)
+# -----------------------------------------------------------------------------
+# PanicMode writes every fired incident to an SQLite database so you can
+# query the history after the fact.  All paths are created automatically.
+storage:
+  # SQLite database for incident history (post-mortem analysis)
+  incident_db: /var/lib/panicmode/incidents.db
+
+  # Directory for system snapshots (ps, ss, free, df dumps on incident)
+  snapshot_dir: /var/log/panicmode/snapshots
+
+  # Directory for rolling daily log files
+  log_dir: /var/log/panicmode
+
+  # JSON file for persisting deduplication state across restarts.
+  # Ensures PanicMode remembers recent incidents even after a quick restart.
+  state_file: /var/lib/panicmode/incident_state.json
+
+# -----------------------------------------------------------------------------
+# Производительность самого PanicMode
+# -----------------------------------------------------------------------------
+performance:
+  # Максимальное потребление CPU (%)
+  cpu_limit: 5.0
+
+  # Максимальное потребление памяти (MB)
+  memory_limit_mb: 50
+
+  # Интервал проверки метрик (рекомендуется: 5-10s)
+  check_interval: 5s
+
+# -----------------------------------------------------------------------------
+# Anomaly Detector thresholds
+# -----------------------------------------------------------------------------
+# Эти пороги используются встроенным детектором аномалий (anomaly.rs),
+# который работает параллельно с правилами мониторов.
+# Детектор аномалий ищет экстремальные ситуации, которые не покрываются правилами.
+anomaly:
+  # CPU: срабатывает при cpu_usage >= порога (без доп. условий)
+  cpu_spike_threshold: 95.0
+
+  # Memory: срабатывает при memory_usage >= порога И swap > 50%
+  memory_spike_threshold: 95.0
+
+  # Connections: срабатывает при active_connections > порога
+  connection_spike_threshold: 10000
+
+  # Suspicious IPs: срабатывает при кол-ве подозрительных IP >= порога
+  suspicious_ip_threshold: 3
+
+  # Порог соединений от одного IP для пометки как "подозрительного"
+  # IP считается подозрительным если у него >= suspicious_connections_per_ip соединений
+  suspicious_connections_per_ip: 50
+
+  # Load average: срабатывает при load_avg_1m >= порога
+  # (независимо от CPU — ловит I/O-bound перегрузку)
+  # Рекомендуется: количество ядер × 2
+  high_load_threshold: 10.0
+
+# -----------------------------------------------------------------------------
+# HTTP API (healthcheck endpoint)
+# -----------------------------------------------------------------------------
+# Минимальный HTTP-сервер для интеграции с балансировщиками и мониторингом.
+# GET /health → 200 {"status":"ok","uptime_secs":N}
+# Любой другой путь → 404
+http_api:
+  enabled: false                  # Включить: true
+  bind: "127.0.0.1:8765"          # Только localhost по умолчанию
+
+# -----------------------------------------------------------------------------
+# Мониторы (правила детектирования проблем)
+# -----------------------------------------------------------------------------
+monitors:
+  # === CPU MONITORING ===
+
+  - name: "Critical CPU Overload"
+    type: cpu_usage
+    threshold: 95
+    actions:
+      - mass_freeze
+      - snapshot
+      - alert_critical
+    enabled: true
+
+  - name: "High CPU Usage"
+    type: cpu_usage
+    threshold: 80
+    actions:
+      - mass_freeze_top
+      - alert_warning
+    enabled: true
+
+  # === MEMORY MONITORING ===
+
+  - name: "Critical Memory Usage"
+    type: memory_usage
+    threshold: 95
+    actions:
+      - mass_freeze
+      - snapshot
+      - alert_critical
+    enabled: true
+
+  - name: "High Memory Usage"
+    type: memory_usage
+    threshold: 85
+    actions:
+      - alert_warning
+    enabled: true
+
+  # === DISK MONITORING ===
+
+  - name: "Disk Almost Full"
+    type: disk_usage
+    threshold: 90
+    actions:
+      - snapshot
+      - alert_critical
+    enabled: true
+
+  # === NETWORK MONITORING ===
+
+  - name: "High Connection Rate"
+    type: connection_rate
+    threshold: 10000
+    actions:
+      - rate_limit
+      - alert_warning
+    enabled: true
+
+  # === SECURITY MONITORING ===
+
+  - name: "SSH Brute Force Attack"
+    type: auth_failures
+    threshold: 20
+    window: 60s
+    actions:
+      - block_ip
+      - alert_critical
+    enabled: true
+
+  - name: "Mass SSH Failures"
+    type: auth_failures
+    threshold: 100
+    actions:
+      - mass_freeze
+      - snapshot
+      - alert_critical
+    enabled: true
+
+  # === FILE MONITORING ===
+
+  - name: "Config File Changes"
+    type: file_monitor
+    threshold: 1
+    paths:
+      - /etc/nginx/nginx.conf
+      - /etc/ssh/sshd_config
+      - /etc/systemd/system
+    actions:
+      - snapshot
+      - alert_warning
+    enabled: true
+
+  # === SWAP MONITORING ===
+
+  - name: "High Swap Usage"
+    type: swap_usage
+    threshold: 70
+    actions:
+      - alert_warning
+    enabled: true
+
+  - name: "Critical Swap Usage"
+    type: swap_usage
+    threshold: 90
+    actions:
+      - snapshot
+      - alert_critical
+    enabled: true
+
+  # === LOAD AVERAGE MONITORING ===
+  # Рекомендуется: threshold = количество CPU ядер × 1.5 (warning)
+  # и × 3.0 (critical)
+
+  - name: "High Load Average"
+    type: load_average
+    threshold: 4.0
+    actions:
+      - alert_warning
+    enabled: true
+
+  - name: "Critical Load Average"
+    type: load_average
+    threshold: 8.0
+    actions:
+      - freeze_top_process
+      - alert_critical
+    enabled: true
+
+  # === DISK I/O MONITORING ===
+
+  - name: "High Disk I/O"
+    type: disk_io
+    threshold: 80
+    actions:
+      - alert_warning
+    enabled: true
+
+  - name: "Disk I/O Saturated"
+    type: disk_io
+    threshold: 95
+    actions:
+      - snapshot
+      - alert_critical
+    enabled: true
+
+  # === CLUSTER-SPECIFIC ===
+
+  - name: "Website Cluster Overload"
+    type: cpu_usage
+    threshold: 90
+    actions:
+      - mass_freeze_cluster:website
+      - alert_warning
+    enabled: true
+
+  # === CUSTOM METRICS ===
+
+  - name: "Redis Memory High"
+    type: custom
+    threshold: 1000000000   # 1 GB in bytes
+    actions:
+      - alert_warning
+    enabled: true
+
+# -----------------------------------------------------------------------------
+# Actions (пользовательские скрипты)
+# -----------------------------------------------------------------------------
+actions:
+  block_malicious:
+    type: script
+    action: /opt/panicmode/scripts/block_ip.sh
+
+  clear_cache:
+    type: script
+    action: /opt/panicmode/scripts/clear_cache.sh
+
+  emergency_backup:
+    type: script
+    action: /opt/panicmode/scripts/backup.sh
+
+# -----------------------------------------------------------------------------
+# Alerts (каналы уведомлений)
+# -----------------------------------------------------------------------------
+alerts:
+  critical:
+    - channel: twilio_call
+      contacts:
+        - name: "On-Call Admin"
+          phone: "+1234567890"
+          retries: 3
+          timeout: 120s
+        - name: "Backup Admin"
+          phone: "+0987654321"
+          retries: 2
+          timeout: 120s
+    - channel: telegram
+    - channel: email
+
+  warning:
+    - channel: telegram
+    - channel: discord
+      webhook_url: "https://discord.com/api/webhooks/YOUR_WEBHOOK"
+    - channel: ntfy
+
+  info:
+    - channel: ntfy
+
+# -----------------------------------------------------------------------------
+# Integrations (внешние сервисы)
+# -----------------------------------------------------------------------------
+integrations:
+  telegram:
+    enabled: true
+    bot_token: "YOUR_BOT_TOKEN"
+    chat_id: "YOUR_CHAT_ID"
+
+  discord:
+    enabled: true
+    webhook_url: "https://discord.com/api/webhooks/YOUR_WEBHOOK"
+
+  ntfy:
+    enabled: true
+    server: "https://ntfy.sh"
+    topic: "panicmode-alerts"
+    token: null   # optional, для приватных топиков
+
+  email:
+    enabled: true
+    smtp_host: "smtp.gmail.com"
+    smtp_port: 587
+    smtp_username: "your-email@gmail.com"
+    smtp_password: "your-app-password"
+    from_email: "panicmode@yourserver.com"
+    to_email: "admin@yourcompany.com"
+    use_tls: true
+
+  # Twilio (phone calls + SMS)
+  twilio:
+    enabled: true
+    account_sid: "YOUR_ACCOUNT_SID"
+    auth_token: "YOUR_AUTH_TOKEN"
+    from_number: "+1234567890"
+
+# -----------------------------------------------------------------------------
+# Custom Metrics (пользовательские метрики)
+# -----------------------------------------------------------------------------
+custom_metrics:
+  redis_memory:
+    command: "redis-cli INFO memory | grep used_memory: | awk -F: '{print $2}'"
+    timeout: 5s
+    cache_ttl: 30s
+    output_format: number
+
+  queue_length:
+    command: "/opt/scripts/check_queue.sh"
+    timeout: 10s
+    cache_ttl: 60s
+    output_format: json   # Ожидает {"value": 123}
+
+  app_health:
+    command: "curl -s localhost:8080/health | jq .score"
+    timeout: 5s
+    cache_ttl: 10s
+    output_format: number
+
+# -----------------------------------------------------------------------------
+# File Monitor
+# -----------------------------------------------------------------------------
+file_monitor:
+  max_events_per_path: 1000
+  aggregation_window: 60s
+
+# -----------------------------------------------------------------------------
+# Circuit Breakers (для action выполнения)
+# -----------------------------------------------------------------------------
+circuit_breakers:
+  max_failures: 5
+  failure_window: 60s
+  open_duration: 30s
+  max_concurrency: 5
+  timeout: 10s

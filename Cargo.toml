@@ -1,0 +1,79 @@
+[package]
+name = "panicmode"
+version = "0.1.0"
+edition = "2021"
+authors = ["BorisYamp"]
+description = "Self-hosted server monitoring with intelligent panic mode and alerts"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/BorisYamp/panicmode"
+keywords = ["monitoring", "security", "alerting", "server"]
+categories = ["command-line-utilities", "network-programming"]
+
+[[bin]]
+name = "panicmode"
+path = "src/main.rs"
+
+[[bin]]
+name = "panicmode-ctl"
+path = "src/bin/panicmode-ctl.rs"
+
+[dependencies]
+# Async runtime
+tokio = { version = "1.35", features = ["full"] }
+tokio-util = { version = "0.7", features = ["sync"] }
+futures = "0.3"
+async-trait = "0.1"
+
+# Config parsing
+serde = { version = "1.0", features = ["derive"] }
+serde_yaml = "0.9"
+serde_json = "1.0"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tracing-appender = "0.2"
+
+# Storage
+rusqlite = { version = "0.31", features = ["bundled"] }
+
+# System metrics
+sysinfo = "0.30"
+procfs = "0.16"
+num_cpus = "1.16"
+
+# Network monitoring
+libc = "0.2"
+
+# File monitoring
+notify = "6.1"
+
+# HTTP client for alerts
+reqwest = { version = "0.11", features = ["json"] }
+
+# Email (SMTP)
+lettre = { version = "0.11", features = ["tokio1", "tokio1-native-tls"], default-features = false }
+
+# Time handling
+regex = "1.10"
+chrono = "0.4"
+
+# Concurrent data structures
+dashmap = "6.0"
+
+# Error handling
+anyhow = "1.0"
+thiserror = "1.0"
+
+[dev-dependencies]
+tempfile = "3.8"
+wiremock = "0.6"
+
+[features]
+default = []
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+strip = true

@@ -1,0 +1,278 @@
+/// Path: PanicMode/exampels/basic.yaml
+# PanicMode Configuration - Full Featured
+# Replace all placeholder values with your actual credentials
+
+# Performance limits for PanicMode itself
+performance:
+  cpu_limit: 5.0              # Max 5% CPU usage
+  memory_limit_mb: 50         # Max 50MB RAM
+  check_interval: "5s"        # Check metrics every 5 seconds
+
+# Monitoring rules
+monitors:
+  # Detect SSH bruteforce attempts
+  - name: "SSH Bruteforce Detection"
+    type: "auth_failures"
+    threshold: 5              # 5 failed attempts
+    window: "60s"             # Within 60 seconds
+    actions:
+      - block_ip
+      - alert_critical
+    enabled: true
+
+  # Detect high CPU usage
+  - name: "High CPU Usage"
+    type: "cpu_usage"
+    threshold: 90             # 90% CPU
+    duration: "30s"           # For at least 30 seconds
+    actions:
+      - freeze_top_process
+      - alert_warning
+    enabled: true
+
+  # Detect high memory usage
+  - name: "High Memory Usage"
+    type: "memory_usage"
+    threshold: 85             # 85% RAM
+    duration: "30s"
+    actions:
+      - alert_warning
+    enabled: true
+
+  # Detect port scanning
+  - name: "Port Scan Detection"
+    type: "connection_rate"
+    threshold: 100            # 100 connections
+    window: "10s"             # Within 10 seconds
+    actions:
+      - rate_limit
+      - alert_critical
+    enabled: true
+
+  # Monitor critical files
+  - name: "Critical File Changes"
+    type: "file_monitor"
+    threshold: 1              # Any change
+    paths:
+      - "/etc/passwd"
+      - "/etc/shadow"
+      - "/etc/sudoers"
+      - "/root/.ssh/authorized_keys"
+    actions:
+      - snapshot
+      - alert_critical
+    enabled: true
+
+  # Detect disk space issues
+  - name: "Low Disk Space"
+    type: "disk_usage"
+    threshold: 90             # 90% full
+    actions:
+      - alert_warning
+    enabled: true
+
+# Actions to execute when rules trigger
+actions:
+  # Block IP address temporarily
+  block_ip:
+    type: "firewall"
+    duration: "1h"            # Block for 1 hour
+
+  # Rate limit connections
+  rate_limit:
+    type: "firewall"
+    rate: "10/s"              # Max 10 connections per second
+
+  # Freeze the top CPU-consuming process
+  freeze_top_process:
+    type: "process"
+    action: "freeze"
+
+  # Create system snapshot
+  snapshot:
+    type: "system"
+    capture:
+      - "logs"
+      - "processes"
+      - "connections"
+      - "files"
+
+# Alert configurations - ALL CHANNELS ENABLED
+alerts:
+  # Critical alerts - uses ALL channels for maximum reliability
+  critical:
+    # Telegram - Free, instant, reliable
+    - channel: "telegram"
+      chat_id: "YOUR_TELEGRAM_CHAT_ID"
+      retries: 3
+      timeout: "10s"
+    
+    # Email - Free, always works, backup channel
+    - channel: "email"
+      email: "your.alert.email@example.com"
+      retries: 3
+      timeout: "15s"
+    
+    # Ntfy - Free, persistent push notifications
+    - channel: "ntfy"
+      topic: "myserver-critical"
+      retries: 3
+      timeout: "10s"
+    
+    # Discord - Free, good for teams
+    - channel: "discord"
+      webhook_url: "https://discord.com/api/webhooks/YOUR_WEBHOOK_ID/YOUR_WEBHOOK_TOKEN"
+      retries: 3
+      timeout: "10s"
+    
+    # Twilio Calls - Paid, for CRITICAL emergencies (wakes you up!)
+    - channel: "twilio_call"
+      contacts:
+        - name: "Primary Admin"
+          phone: "+1234567890"      # Replace with your phone
+          retries: 3
+          timeout: "2m"
+        - name: "Secondary Admin"
+          phone: "+0987654321"      # Replace with backup phone
+          retries: 3
+          timeout: "2m"
+    
+    # Twilio SMS - Paid, backup for calls
+    - channel: "twilio_sms"
+      contacts:
+        - name: "Primary Admin"
+          phone: "+1234567890"
+          retries: 2
+          timeout: "30s"
+    
+    # Generic Webhook - for custom integrations
+    - channel: "webhook"
+      webhook_url: "https://your-server.com/webhook/alerts"
+      retries: 2
+      timeout: "10s"
+
+  # Warning alerts - less aggressive, cheaper channels
+  warning:
+    - channel: "telegram"
+      chat_id: "YOUR_TELEGRAM_CHAT_ID"
+      retries: 2
+    
+    - channel: "email"
+      email: "your.alert.email@example.com"
+      retries: 2
+    
+    - channel: "discord"
+      webhook_url: "https://discord.com/api/webhooks/YOUR_WEBHOOK_ID/YOUR_WEBHOOK_TOKEN"
+      retries: 2
+    
+    # No Twilio calls for warnings (save money)
+    # Only SMS if you want
+    # - channel: "twilio_sms"
+    #   contacts:
+    #     - name: "Primary Admin"
+    #       phone: "+1234567890"
+    #       retries: 1
+
+  # Info alerts - minimal channels
+  info:
+    - channel: "telegram"
+      chat_id: "YOUR_TELEGRAM_CHAT_ID"
+      retries: 1
+    
+    - channel: "ntfy"
+      topic: "myserver-info"
+      retries: 1
+
+# Integration credentials - ALL INTEGRATIONS CONFIGURED
+integrations:
+  # ============================================================
+  # TELEGRAM (FREE) - Recommended as primary channel
+  # ============================================================
+  # Setup:
+  # 1. Message @BotFather on Telegram → /newbot
+  # 2. Save the bot token
+  # 3. Message your bot, then visit:
+  #    https://api.telegram.org/bot<TOKEN>/getUpdates
+  # 4. Find your chat ID in the response
+  telegram:
+    enabled: true
+    bot_token: "1234567890:ABCdefGHIjklMNOpqrsTUVwxyz"  # From @BotFather
+    chat_id: "123456789"                                 # Your chat ID
+
+  # ============================================================
+  # EMAIL (FREE) - Excellent backup channel
+  # ============================================================
+  # Gmail setup:
+  # 1. Enable 2FA on your Google account
+  # 2. Go to: https://myaccount.google.com/apppasswords
+  # 3. Generate an "App Password"
+  # 4. Use that password below (NOT your regular password)
+  # 
+  # For other providers, use their SMTP settings
+  email:
+    enabled: true
+    smtp_host: "smtp.gmail.com"                # Gmail
+    smtp_port: 587                              # TLS port
+    smtp_username: "your.email@gmail.com"       # Your email
+    smtp_password: "abcd efgh ijkl mnop"        # App password (16 chars)
+    from_email: "your.email@gmail.com"          # Same as username
+    to_email: "your.alert.email@gmail.com"      # Where to send alerts
+    use_tls: true
+
+  # Alternative email providers:
+  # 
+  # Outlook/Hotmail:
+  # smtp_host: "smtp-mail.outlook.com"
+  # smtp_port: 587
+  # 
+  # Yahoo:
+  # smtp_host: "smtp.mail.yahoo.com"
+  # smtp_port: 587
+  # 
+  # Custom SMTP:
+  # smtp_host: "mail.yourdomain.com"
+  # smtp_port: 587 or 465
+
+  # ============================================================
+  # NTFY (FREE) - Persistent push notifications
+  # ============================================================
+  # Setup:
+  # 1. Visit https://ntfy.sh
+  # 2. Choose a unique topic (e.g., myserver-abc123)
+  # 3. Subscribe via app or web
+  # 4. Optional: Self-host ntfy for privacy
+  ntfy:
+    enabled: true
+    server: "https://ntfy.sh"                   # Or your self-hosted URL
+    topic: "myserver-alerts-abc123"             # MUST be unique!
+    # token: "tk_abc123..."                     # Optional, if using auth
+
+  # ============================================================
+  # DISCORD (FREE) - Great for teams
+  # ============================================================
+  # Setup:
+  # 1. Go to your Discord server settings
+  # 2. Integrations → Webhooks → New Webhook
+  # 3. Copy the webhook URL
+  # 4. Paste below
+  discord:
+    enabled: true
+    webhook_url: "https://discord.com/api/webhooks/1234567890/abcdefghijklmnopqrstuvwxyz"
+
+  # ============================================================
+  # TWILIO (PAID ~$1/month + usage) - For phone calls/SMS
+  # ============================================================
+  # Setup:
+  # 1. Sign up at https://www.twilio.com
+  # 2. Get a phone number (~$1/month)
+  # 3. Find Account SID and Auth Token in console
+  # 4. Costs: ~$0.013/min for calls, ~$0.0075/SMS
+  # 
+  # Budget estimate:
+  # - 10 critical alerts/month with 2 calls each = ~$0.26
+  # - Total with number: ~$1.26/month
+  twilio:
+    enabled: true                               # Set to false to disable
+    account_sid: "ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"  # From Twilio console
+    auth_token: "your_auth_token_here"                 # From Twilio console  
+    from_number: "+12345678901"                        # Your Twilio number

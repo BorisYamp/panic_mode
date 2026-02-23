@@ -1,0 +1,336 @@
+/// Path: PanicMode/arch.txt
+PanicMode Architecture
+======================
+
+┌─────────────────────────────────────────────────────────────────┐
+│                          Main Process                            │
+│  - Loads config                                                  │
+│  - Initializes components (Arc-wrapped)                          │
+│  - Spawns supervised tasks                                       │
+│  - Handles Ctrl+C → CancellationToken                           │
+│  - FAIL-FAST: any task dies → graceful shutdown all             │
+└─────────────────────────────────────────────────────────────────┘
+                                 │
+                    ┌────────────┼────────────┐
+                    │            │            │
+                    ▼            ▼            ▼
+        ┌───────────────────────────────────────────┐
+        │      CancellationToken (shared)           │
+        │  - Ctrl+C signal                          │
+        │  - Task failure trigger                   │
+        └───────────────────────────────────────────┘
+
+════════════════════════════════════════════════════════════════════
+                        4 Supervised Tasks
+════════════════════════════════════════════════════════════════════
+
+┌─────────────────────────────────────────────────────────────────┐
+│  1. MONITORING TASK                                              │
+│  ━━━━━━━━━━━━━━━━━                                              │
+│  • Collects system metrics (CPU, RAM, Network, Disk, Auth logs) │
+│  • Runs every check_interval (from config)                      │
+│  • Spawns collection in timeout-protected task                  │
+│  • Sends metrics → metrics_tx channel (non-blocking)            │
+│  • On timeout: aborts task + emergency alert                    │
+│                                                                  │
+│  Arc<MonitorEngine> (shared, cheap to clone)                    │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              │ metrics_tx (mpsc, size 10)
+                              │ DROP POLICY: old metrics dropped
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  2. DETECTOR TASK                                                │
+│  ━━━━━━━━━━━━━━━                                                │
+│  • Receives metrics from monitoring                             │
+│  • Analyzes against rules (thresholds, patterns)                │
+│  • Detects anomalies                                            │
+│  • Spawns detection in timeout-protected task                   │
+│  • On anomaly: triggers actions + sends alerts                  │
+│  • On error/panic: supervisor catches + alerts                  │
+│                                                                  │
+│  Arc<Detector> (shared)                                         │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              │ alert_tx (mpsc, size 100)
+                              │ NEVER DROP: fallback to stderr
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  3. ALERT TASK                                                   │
+│  ━━━━━━━━━━━━                                                   │
+│  • Receives alerts from detector + self-check + supervisors     │
+│  • Dispatches to configured channels:                           │
+│    - Telegram (free)                                            │
+│    - Ntfy (free, push notifications)                            │
+│    - Discord (free)                                             │
+│    - Email (free SMTP)                                          │
+│    - Webhook (generic)                                          │
+│    - Twilio (optional, paid, for calls)                         │
+│  • Spawns sending in timeout-protected task                     │
+│  • Retry logic + escalation                                     │
+│  • Drains queue on shutdown                                     │
+│                                                                  │
+│  Arc<AlertDispatcher> (shared)                                  │
+└─────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────┐
+│  4. SELF-CHECK TASK                                              │
+│  ━━━━━━━━━━━━━━━━━                                              │
+│  • Monitors PanicMode's own health every 5s                     │
+│  • Metrics tracked:                                             │
+│    - CPU usage (via /proc/[pid]/stat, 2 measurements)          │
+│    - Memory usage (via /proc/[pid]/status)                     │
+│    - File descriptor count (via /proc/[pid]/fd/)               │
+│    - Thread count (via /proc/[pid]/task/)                      │
+│    - Memory growth trend (vs baseline)                          │
+│  • Sends alerts if limits exceeded                              │
+│  • Uses spawn_blocking for CPU measurement (accurate)           │
+│  • Uses send_alert_with_fallback (never loses alerts)           │
+└─────────────────────────────────────────────────────────────────┘
+
+════════════════════════════════════════════════════════════════════
+                    Task Supervision Layer
+════════════════════════════════════════════════════════════════════
+
+Each task wrapped in supervise_task():
+  • Catches panics (AssertUnwindSafe + catch_unwind)
+  • Catches errors (Result)
+  • Exponential backoff on failure (1s → 60s max)
+  • Max 3 consecutive failures → gives up
+  • Sends emergency alerts on failure/panic
+  • Respects CancellationToken during backoff
+  • Restarts task automatically
+
+════════════════════════════════════════════════════════════════════
+                    Communication Channels
+════════════════════════════════════════════════════════════════════
+
+metrics_tx/rx:  Monitoring → Detector
+                Queue size: 10
+                Policy: DROP old metrics (real-time priority)
+                
+alert_tx/rx:    All tasks → Alert Dispatcher
+                Queue size: 100
+                Policy: NEVER DROP (fallback to stderr + blocking send)
+
+════════════════════════════════════════════════════════════════════
+                    Safety Mechanisms
+════════════════════════════════════════════════════════════════════
+
+1. FAIL-FAST
+   └─ Any task dies → cancel all → graceful shutdown (10s timeout)
+
+2. PANIC PROTECTION
+   └─ catch_unwind() in supervisor → restart task
+
+3. TIMEOUT PROTECTION
+   └─ Every async operation wrapped in timeout() + abort_handle
+
+4. DEADLOCK PREVENTION
+   └─ try_send() instead of send().await
+   └─ sleep_with_cancel() checks every 100ms
+
+5. ALERT GUARANTEE
+   └─ send_alert_with_fallback():
+      try_send → eprintln! → blocking send (1s timeout) → eprintln!
+
+6. RESOURCE LIMITS
+   └─ CPU < 5% (configurable)
+   └─ Memory < 50MB (configurable)
+   └─ Self-monitoring enforces limits
+
+7. UNDERFLOW PROTECTION
+   └─ saturating_sub() for all CPU calculations
+
+════════════════════════════════════════════════════════════════════
+                    Configuration (YAML)
+════════════════════════════════════════════════════════════════════
+
+performance:
+  cpu_limit: 5.0              # Max CPU %
+  memory_limit_mb: 50         # Max RAM MB
+  check_interval: "5s"        # Monitoring frequency
+
+monitors:
+  - name: "SSH Bruteforce"
+    type: "auth_failures"
+    threshold: 5
+    window: "60s"
+    actions: [block_ip, alert_critical]
+  
+  - name: "CPU Spike"
+    type: "cpu_usage"
+    threshold: 90
+    duration: "30s"
+    actions: [freeze_top_process, alert_warning]
+
+actions:
+  block_ip:
+    type: "firewall"
+    duration: "1h"
+  
+  freeze_top_process:
+    type: "process"
+    action: "freeze"
+
+alerts:
+  critical:
+    - channel: "telegram"
+      chat_id: "..."
+      retries: 3
+    - channel: "ntfy"
+      topic: "myserver"
+
+integrations:
+  telegram:
+    enabled: true
+    bot_token: "user_provided"
+    chat_id: "user_provided"
+  
+  ntfy:
+    enabled: true
+    server: "ntfy.sh"
+    topic: "user_provided"
+
+════════════════════════════════════════════════════════════════════
+                    File Structure
+════════════════════════════════════════════════════════════════════
+
+panicmode/
+├── examples/
+│   ├── basic.yaml!
+│   ├── advanced.yaml???
+│   └── minimal.yaml!
+├── src/
+│   ├── main.rs!              ← Main + supervision
+│   ├── config.rs!
+│   ├── detector/
+│   │   ├── mod.rs!           ← Detector logic
+│   │   ├── critical_breaker.rs!
+│   │   ├── rules.rs         ← Rule evaluation
+│   │   └── anomaly.rs       ← Anomaly detection
+│   ├── monitor/
+│   │   ├── mod.rs!           ← MonitorEngine
+│   │   ├── cpu.rs!           ← CPU metrics
+│   │   ├── memory.rs!        ← RAM metrics
+│   │   ├── network.rs!       ← Network metrics
+│   │   └── auth.rs!          ← Auth log parsing
+│   ├── action/
+│   │   ├── mod.rs           ← Action executor
+│   │   ├── firewall.rs      ← iptables wrapper
+│   │   └── process.rs       ← Process control
+│   └── alert/
+│       ├── mod.rs           ← AlertDispatcher
+│       ├── telegram.rs      ← Telegram integration
+│       ├── ntfy.rs          ← Ntfy integration
+│       ├── discord.rs       ← Discord webhook
+│       ├── email.rs         ← SMTP email
+│       └── webhook.rs       ← Generic webhook
+├── Cargo.toml!
+├── install.sh
+├── panicmode.service
+└── README.md
+
+════════════════════════════════════════════════════════════════════
+                    Key Design Decisions
+════════════════════════════════════════════════════════════════════
+
+1. Arc-wrapped components (cheap cloning)
+2. Separate tasks for isolation
+3. mpsc channels for communication
+4. DROP old metrics (real-time priority)
+5. NEVER drop alerts (fallback chain)
+6. Panic-proof supervision
+7. Timeout on everything
+8. Self-monitoring (eat own dog food)
+9. 100% self-hosted (no cloud dependencies)
+10. Graceful degradation (individual task failures don't kill system)
+
+════════════════════════════════════════════════════════════════════
+                    Production Guarantees
+════════════════════════════════════════════════════════════════════
+
+✅ No silent failures
+✅ No deadlocks (non-blocking + timeouts)
+✅ No panics escape (catch_unwind)
+✅ No resource leaks (monitored)
+✅ No alert loss (fallback to stderr)
+✅ No underflows (saturating_sub)
+✅ Graceful shutdown
+✅ Auto-restart on failure
+✅ Minimal overhead (<5% CPU, <50MB RAM)
+
+
+
+
+
+panicmode/
+├── examples/
+│   ├── basic.yaml!
+│   └── minimal.yaml!
+├── src/
+│   ├── main.rs
+│   ├── config.rs
+│   ├── detector/
+│   │   ├── mod.rs
+│   │   ├── critical_breaker.rs
+│   │   ├── rules.rs
+│   │   └── anomaly.rs
+│   ├── monitor/
+│   │   ├── mod.rs
+│   │   ├── cpu.rs
+│   │   ├── custom_metrics.rs
+│   │   ├── file_whacher.rs
+│   │   ├── memory.rs
+│   │   ├── network.rs
+│   │   └── auth.rs
+│   ├── action/   
+│   │   ├── mod.rs                     # API + re-exports
+│   │   ├── trait.rs                   # Action trait (domain)
+│   │   ├── registry.rs                # ActionRegistry (application)
+│   │   ├── executor.rs                # ActionExecutor (orchestration)
+│   │   ├── builder.rs                 # Composition root
+│   │   ├── result.rs                  # Result types
+│   │   ├── middleware/
+│   │   │   ├── mod.rs
+│   │   │   └── breaker.rs             # BreakerWrapped<A>
+│   │   └── implementations/
+│   │       ├── mod.rs
+│   │       ├── firewall.rs
+│   │       ├── process.rs
+│   │       ├── snapshot.rs
+│   │       └── script.rs
+├── Cargo.toml
+
+
+src/action/
+├── mod.rs                     # API + re-exports
+├── trait.rs                   # Action trait (domain)
+├── registry.rs                # ActionRegistry (application)
+├── executor.rs                # ActionExecutor (orchestration)
+├── builder.rs                 # Composition root
+├── result.rs                  # Result types
+├── middleware/
+│   ├── mod.rs
+│   └── breaker.rs             # BreakerWrapped<A>
+└── implementations/
+    ├── mod.rs
+    ├── firewall.rs
+    ├── process.rs
+    ├── snapshot.rs
+    └── script.rs
+
+
+    Repository layout:
+panicmode/
+├── exampels/
+│   ├── config.yaml              # Full annotated config example
+│   ├── mass_freeze.yaml         # Mass freeze config example
+│   └── minimal.yaml
+├── scr/
+│   └── ...
+└── Cargo.toml
+Runtime (after install):
+/etc/panicmode/
+├── config.yaml           # Main config
+└── mass_freeze.yaml      # Mass freeze config

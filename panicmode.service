@@ -1,0 +1,59 @@
+[Unit]
+Description=PanicMode — server monitoring and incident response
+Documentation=https://github.com/BorisYamp/panicmode
+After=network-online.target
+Wants=network-online.target
+# Start after syslog so that log forwarding is available
+After=syslog.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/panicmode /etc/panicmode/config.yaml
+Restart=on-failure
+RestartSec=5s
+
+# Run as root — required for:
+#   - Reading /proc/<pid>/fd (process monitoring)
+#   - Sending SIGSTOP/SIGCONT to arbitrary processes
+#   - Managing iptables rules (BlockIp action)
+User=root
+Group=root
+
+# Working directory
+WorkingDirectory=/var/lib/panicmode
+
+# Environment
+Environment=RUST_LOG=panicmode=info
+
+# ─── Hardening (keep what root actually needs) ────────────────────────────────
+
+# Prevent privilege escalation via execve
+NoNewPrivileges=true
+
+# Private /tmp
+PrivateTmp=true
+
+# Read-only file system except where we need to write
+ReadOnlyPaths=/
+ReadWritePaths=/var/lib/panicmode /var/log/panicmode /etc/panicmode /tmp
+
+# Allow network access (alerts via HTTP/SMTP/Telegram etc.)
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+
+# Restrict dangerous syscalls
+SystemCallFilter=@system-service @process @network-io @file-system
+SystemCallFilter=~@reboot @swap @mount
+SystemCallErrorNumber=EPERM
+
+# Limit resource usage
+LimitNOFILE=65536
+LimitNPROC=512
+MemoryMax=256M
+CPUQuota=10%
+
+# Kill entire process group on stop
+KillMode=control-group
+TimeoutStopSec=15s
+
+[Install]
+WantedBy=multi-user.target
