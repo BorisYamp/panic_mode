@@ -340,8 +340,10 @@ mod tests {
     fn test_parse_mock_log_with_timestamps() {
         let mut temp_file = NamedTempFile::new().unwrap();
         
-        // Realistic log lines with timestamps
-        writeln!(temp_file, "Jan 15 10:30:00 server sshd[1234]: Failed password for invalid user admin from 192.168.1.100 port 54321 ssh2").unwrap();
+        // Realistic log lines with timestamps.
+        // Both lines use the same user ("root") so they map to the same
+        // HashMap key "root@192.168.1.100" and produce attempt_count == 2.
+        writeln!(temp_file, "Jan 15 10:30:00 server sshd[1234]: Failed password for root from 192.168.1.100 port 54321 ssh2").unwrap();
         writeln!(temp_file, "Jan 15 10:30:05 server sshd[1235]: Failed password for root from 192.168.1.100 port 54322 ssh2").unwrap();
         writeln!(temp_file, "Jan 15 10:30:10 server sshd[1236]: Accepted password for user from 192.168.1.200 port 54323 ssh2").unwrap();
         writeln!(temp_file, "Jan 15 10:30:15 server sshd[1237]: Failed password for admin from 10.0.0.5 port 12345 ssh2").unwrap();
@@ -392,8 +394,13 @@ mod tests {
     #[test]
     fn test_log_rotation_handling() {
         let mut temp_file = NamedTempFile::new().unwrap();
-        
-        writeln!(temp_file, "Jan 15 10:30:00 server sshd[1234]: Failed password for user1 from 1.1.1.1 port 1234 ssh2").unwrap();
+
+        // Write several lines so that last_position >> new_file_size after rotation.
+        // This ensures the "file_size < last_position" rotation check triggers correctly.
+        for i in 0..5u32 {
+            writeln!(temp_file, "Jan 15 10:30:{:02} server sshd[{}]: Failed password for user1 from 1.1.1.1 port {} ssh2",
+                     i, 1234 + i, 1234 + i).unwrap();
+        }
         temp_file.flush().unwrap();
         
         let mut monitor = AuthMonitor::new().unwrap();

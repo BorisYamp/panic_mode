@@ -330,13 +330,14 @@ mod tests {
         }
     }
 
-    fn write_script(content: &str) -> NamedTempFile {
+    fn write_script(content: &str) -> tempfile::TempPath {
         let mut f = NamedTempFile::new().unwrap();
         f.write_all(content.as_bytes()).unwrap();
         let mut perms = f.as_file().metadata().unwrap().permissions();
         perms.set_mode(0o755);
         f.as_file().set_permissions(perms).unwrap();
-        f
+        // Close the write handle so Linux won't return ETXTBSY when we exec the script.
+        f.into_temp_path()
     }
 
     // ── execute() integration tests ───────────────────────────────────────────
@@ -378,7 +379,7 @@ mod tests {
     async fn test_execute_success_with_real_script() {
         let script = write_script("#!/bin/sh\nexit 0\n");
         let action = FirewallAction {
-            script_path: script.path().to_str().unwrap().to_string(),
+            script_path: script.to_str().unwrap().to_string(),
             storage: test_storage(),
             whitelist: vec![],
         };
@@ -393,7 +394,7 @@ mod tests {
         // In practice both call the same script, which exits 0 → both succeed
         let script = write_script("#!/bin/sh\nexit 0\n");
         let action = FirewallAction {
-            script_path: script.path().to_str().unwrap().to_string(),
+            script_path: script.to_str().unwrap().to_string(),
             storage: test_storage(),
             whitelist: vec![],
         };
@@ -407,7 +408,7 @@ mod tests {
     async fn test_execute_all_scripts_fail_returns_err() {
         let script = write_script("#!/bin/sh\nexit 1\n");
         let action = FirewallAction {
-            script_path: script.path().to_str().unwrap().to_string(),
+            script_path: script.to_str().unwrap().to_string(),
             storage: test_storage(),
             whitelist: vec![],
         };
@@ -551,7 +552,7 @@ mod tests {
     async fn test_execute_whitelisted_ip_skipped() {
         let script = write_script("#!/bin/sh\nexit 0\n");
         let action = FirewallAction {
-            script_path: script.path().to_str().unwrap().to_string(),
+            script_path: script.to_str().unwrap().to_string(),
             storage: test_storage(),
             whitelist: vec![
                 WhitelistEntry::parse("1.2.3.4").unwrap(),
@@ -569,7 +570,7 @@ mod tests {
     async fn test_execute_whitelist_partial_block() {
         let script = write_script("#!/bin/sh\nexit 0\n");
         let action = FirewallAction {
-            script_path: script.path().to_str().unwrap().to_string(),
+            script_path: script.to_str().unwrap().to_string(),
             storage: test_storage(),
             whitelist: vec![WhitelistEntry::parse("1.2.3.4").unwrap()],
         };

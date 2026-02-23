@@ -28,7 +28,12 @@ impl FileWatcher {
     pub fn new(max_events_per_path: usize, aggregation_window: Duration) -> Result<Self> {
         let event_counts = Arc::new(RwLock::new(HashMap::new()));
         let event_counts_clone = event_counts.clone();
-        
+
+        // Capture the tokio handle before entering the notify callback thread.
+        // notify fires events from its own OS thread (inotify/kqueue), which is
+        // not a tokio thread, so `tokio::spawn` would panic there.
+        let handle = tokio::runtime::Handle::current();
+
         // Create notify watcher
         let mut watcher = notify::recommended_watcher(move |res: Result<Event, notify::Error>| {
             match res {
@@ -36,10 +41,10 @@ impl FileWatcher {
                     // Handle file event
                     if let Some(path) = event.paths.first() {
                         let path_str = path.to_string_lossy().to_string();
-                        
+
                         // Spawn async task to update counts
                         let event_counts = event_counts_clone.clone();
-                        tokio::spawn(async move {
+                        handle.spawn(async move {
                             let mut counts = event_counts.write().await;
                             counts.entry(path_str.clone())
                                 .and_modify(|pe: &mut PathEvents| pe.events.push(Instant::now()))

@@ -158,19 +158,20 @@ mod tests {
         })
     }
 
-    fn write_script(content: &str) -> NamedTempFile {
+    fn write_script(content: &str) -> tempfile::TempPath {
         let mut f = NamedTempFile::new().unwrap();
         f.write_all(content.as_bytes()).unwrap();
         let mut perms = f.as_file().metadata().unwrap().permissions();
         perms.set_mode(0o755);
         f.as_file().set_permissions(perms).unwrap();
-        f
+        // Close the write handle so Linux won't return ETXTBSY when we exec the script.
+        f.into_temp_path()
     }
 
     #[tokio::test]
     async fn test_script_success() {
         let script = write_script("#!/bin/sh\nexit 0\n");
-        let config = config_with_script(script.path().to_str().unwrap());
+        let config = config_with_script(script.to_str().unwrap());
         let action = ScriptAction::new(config).unwrap();
         let incident = make_incident();
         let ctx = ActionContext::new(&incident);
@@ -183,7 +184,7 @@ mod tests {
         let script = write_script(
             "#!/bin/sh\n[ -n \"$PANIC_INCIDENT_NAME\" ] && exit 0 || exit 1\n",
         );
-        let config = config_with_script(script.path().to_str().unwrap());
+        let config = config_with_script(script.to_str().unwrap());
         let action = ScriptAction::new(config).unwrap();
         let incident = make_incident();
         let ctx = ActionContext::new(&incident);
@@ -193,7 +194,7 @@ mod tests {
     #[tokio::test]
     async fn test_script_bad_exit_code_returns_err() {
         let script = write_script("#!/bin/sh\nexit 42\n");
-        let config = config_with_script(script.path().to_str().unwrap());
+        let config = config_with_script(script.to_str().unwrap());
         let action = ScriptAction::new(config).unwrap();
         let incident = make_incident();
         let ctx = ActionContext::new(&incident);

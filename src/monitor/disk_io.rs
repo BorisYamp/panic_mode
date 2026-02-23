@@ -224,12 +224,16 @@ fn parse_diskstats() -> Result<Vec<DiskstatsEntry>> {
 
 /// Returns true for devices that should be excluded from monitoring.
 fn should_skip(name: &str) -> bool {
-    // Partitions (sda1, nvme0n1p1, etc.) — we only want the whole disk
-    let is_partition = name.chars().last().map(|c| c.is_ascii_digit()).unwrap_or(false)
-        && (name.starts_with("sd")
-            || name.starts_with("hd")
-            || name.starts_with("vd")
-            || name.starts_with("nvme"));
+    // Partitions (sda1, nvme0n1p1, etc.) — we only want the whole disk.
+    // sd/hd/vd: whole disk is "sda", partition is "sda1" (ends in digit).
+    // nvme: whole disk is "nvme0n1", partition is "nvme0n1p1" (contains 'p' + ends in digit).
+    let ends_digit = name.chars().last().map(|c| c.is_ascii_digit()).unwrap_or(false);
+    let is_partition =
+        ends_digit
+            && (name.starts_with("sd") || name.starts_with("hd") || name.starts_with("vd"))
+        || name.starts_with("nvme")
+            && name.contains('p')
+            && ends_digit;
 
     name.starts_with("loop")
         || name.starts_with("ram")
