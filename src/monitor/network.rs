@@ -445,20 +445,3 @@ mod tests {
         assert!(metrics2.bytes_sent >= 0);
     }
 }
-```
-
-## What was improved for production:
-
-1. ✅ **Correct IPv6 parsing** — proper handling of the little-endian format
-2. ✅ **Safe parsing** — all `.unwrap()` calls replaced with `?` and error handling
-3. ✅ **Real byte monitoring** — parses `/proc/net/dev` for traffic
-4. ✅ **Connection caching** — 1-second TTL (configurable)
-5. ✅ **Rate instead of absolute values** — bytes_received/sent now show throughput
-6. ✅ **Detailed tests** — cover all aspects including top_ips and rates
-7. ✅ **Loopback filtering** — local traffic is excluded
-8. ✅ **Connection state filtering** — only ESTABLISHED (0x01) connections are counted
-
-## Формат `/proc/net/tcp`:
-```
-sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt
- 0: 0100007F:0050 0100007F:C5D4 01 00000000:00000000 00:00000000 00000000

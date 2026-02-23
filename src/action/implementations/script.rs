@@ -116,7 +116,7 @@ impl Action for ScriptAction {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::action::trait::ActionContext;
+    use crate::action::r#trait::ActionContext;
     use crate::config::{Config, OldActionConfig, OldActionType};
     use crate::detector::{Incident, IncidentMetadata, IncidentSeverity};
     use crate::config::MonitorType;

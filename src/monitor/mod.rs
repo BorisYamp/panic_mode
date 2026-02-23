@@ -199,14 +199,16 @@ impl MonitorEngine {
         let auth_monitor = self.auth_monitor.clone();
         let disk_io_monitor = self.disk_io_monitor.clone();
 
-        // Parallel collection
-        let (cpu_result, memory_result, network_result, auth_result, disk_result, disk_io_result) =
+        // Disk is cached (in-memory RwLock) — collect before join! to avoid mixed-type inference issues
+        let disk_result = self.collect_disk_metrics_cached().await;
+
+        // Parallel collection of spawn_blocking tasks (uniform JoinHandle<Result<T>> types)
+        let (cpu_result, memory_result, network_result, auth_result, disk_io_result) =
             tokio::join!(
                 tokio::task::spawn_blocking(move || cpu_monitor.collect()),
                 tokio::task::spawn_blocking(move || memory_monitor.collect()),
                 tokio::task::spawn_blocking(move || network_monitor.collect()),
                 tokio::task::spawn_blocking(move || auth_monitor.collect()),
-                self.collect_disk_metrics_cached(),
                 tokio::task::spawn_blocking(move || disk_io_monitor.collect()),
             );
 

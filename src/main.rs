@@ -124,7 +124,7 @@ async fn main() -> Result<()> {
     // IncidentHandler: orchestrator for incident processing.
     // Receives ActionExecutor, alert_tx and IncidentStorage.
     let incident_handler = Arc::new(
-        IncidentHandler::new(config.clone(), action_executor.clone(), alert_tx.clone(), incident_storage)
+        IncidentHandler::new(config.clone(), action_executor.clone(), alert_tx.clone(), incident_storage.clone())
     );
 
     // Spawn tasks with supervision
@@ -134,9 +134,11 @@ async fn main() -> Result<()> {
         let monitor = monitor.clone();
         let metrics_tx = metrics_tx.clone();
         tokio::spawn(async move {
+            let cancel_c = cancel.clone();
+            let alert_tx_c = alert_tx.clone();
             supervise_task(
                 "monitoring",
-                || run_monitoring_task(monitor.clone(), cancel.clone(), metrics_tx.clone(), alert_tx.clone()),
+                move || run_monitoring_task(monitor.clone(), cancel_c.clone(), metrics_tx.clone(), alert_tx_c.clone()),
                 cancel,
                 alert_tx,
             ).await
@@ -149,14 +151,16 @@ async fn main() -> Result<()> {
         let detector = detector.clone();
         let incident_handler = incident_handler.clone();
         tokio::spawn(async move {
+            let cancel_c = cancel.clone();
+            let alert_tx_c = alert_tx.clone();
             supervise_task(
                 "detector",
-                || run_detector_task(
+                move || run_detector_task(
                     detector.clone(),
                     incident_handler.clone(),
-                    cancel.clone(),
+                    cancel_c.clone(),
                     metrics_rx.clone(),
-                    alert_tx.clone(),
+                    alert_tx_c.clone(),
                 ),
                 cancel,
                 alert_tx,
@@ -169,9 +173,10 @@ async fn main() -> Result<()> {
         let alert_tx_clone = alert_tx.clone();
         let alert_dispatcher = alert_dispatcher.clone();
         tokio::spawn(async move {
+            let cancel_c = cancel.clone();
             supervise_task(
                 "alert",
-                || run_alert_task(alert_dispatcher.clone(), alert_rx.clone(), cancel.clone()),
+                move || run_alert_task(alert_dispatcher.clone(), alert_rx.clone(), cancel_c.clone()),
                 cancel,
                 alert_tx_clone,
             ).await
@@ -183,9 +188,11 @@ async fn main() -> Result<()> {
         let config = config.clone();
         let alert_tx = alert_tx.clone();
         tokio::spawn(async move {
+            let cancel_c = cancel.clone();
+            let alert_tx_c = alert_tx.clone();
             supervise_task(
                 "self-check",
-                || run_self_check_task(config.clone(), cancel.clone(), alert_tx.clone()),
+                move || run_self_check_task(config.clone(), cancel_c.clone(), alert_tx_c.clone()),
                 cancel,
                 alert_tx,
             ).await
@@ -202,9 +209,10 @@ async fn main() -> Result<()> {
                 cancel.cancelled().await;
                 return Ok(());
             }
+            let cancel_c = cancel.clone();
             supervise_task(
                 "http-api",
-                || run_http_api_task(config.clone(), cancel.clone()),
+                move || run_http_api_task(config.clone(), cancel_c.clone()),
                 cancel,
                 alert_tx,
             ).await
@@ -223,9 +231,10 @@ async fn main() -> Result<()> {
                 return;
             }
             let server = ctl::CtlServer::new(config.clone(), storage);
+            let cancel_c = cancel.clone();
             if let Err(e) = supervise_task(
                 "ctl",
-                || server.run(cancel.clone()),
+                move || server.run(cancel_c.clone()),
                 cancel,
                 alert_tx,
             ).await {
@@ -237,34 +246,26 @@ async fn main() -> Result<()> {
     let task_count = if config.http_api.enabled { 5 } else { 4 };
     info!("PanicMode is now active with {} supervised tasks (+ctl auxiliary)", task_count);
 
-    // Collect critical task handles (ctl is auxiliary — excluded from fail-fast)
-    let mut tasks = vec![
-        ("monitoring", monitoring_task),
-        ("detector", detector_task),
-        ("alert", alert_task),
-        ("self-check", self_check_task),
-        ("http-api", http_api_task),
-    ];
-
     // FAIL-FAST: if any critical task terminates, begin graceful shutdown
+    // (use named variables — Vec indexing causes multiple &mut borrow errors)
     tokio::select! {
-        result = &mut tasks[0].1 => {
+        result = &mut monitoring_task => {
             error!("Monitoring task terminated: {:?}", result);
             cancel_token.cancel();
         }
-        result = &mut tasks[1].1 => {
+        result = &mut detector_task => {
             error!("Detector task terminated: {:?}", result);
             cancel_token.cancel();
         }
-        result = &mut tasks[2].1 => {
+        result = &mut alert_task => {
             error!("Alert task terminated: {:?}", result);
             cancel_token.cancel();
         }
-        result = &mut tasks[3].1 => {
+        result = &mut self_check_task => {
             error!("Self-check task terminated: {:?}", result);
             cancel_token.cancel();
         }
-        result = &mut tasks[4].1 => {
+        result = &mut http_api_task => {
             error!("HTTP API task terminated: {:?}", result);
             cancel_token.cancel();
         }
@@ -272,6 +273,14 @@ async fn main() -> Result<()> {
 
     // Graceful shutdown: wait for remaining tasks
     info!("Waiting for tasks to complete gracefully...");
+
+    let tasks = [
+        ("monitoring", monitoring_task),
+        ("detector",   detector_task),
+        ("alert",      alert_task),
+        ("self-check", self_check_task),
+        ("http-api",   http_api_task),
+    ];
 
     for (name, task) in tasks {
         match timeout(GRACEFUL_SHUTDOWN_TIMEOUT, task).await {
