@@ -128,7 +128,7 @@ async fn main() -> Result<()> {
     );
 
     // Spawn tasks with supervision
-    let monitoring_task = {
+    let mut monitoring_task = {
         let cancel = cancel_token.clone();
         let alert_tx = alert_tx.clone();
         let monitor = monitor.clone();
@@ -145,7 +145,7 @@ async fn main() -> Result<()> {
         })
     };
 
-    let detector_task = {
+    let mut detector_task = {
         let cancel = cancel_token.clone();
         let alert_tx = alert_tx.clone();
         let detector = detector.clone();
@@ -168,7 +168,7 @@ async fn main() -> Result<()> {
         })
     };
 
-    let alert_task = {
+    let mut alert_task = {
         let cancel = cancel_token.clone();
         let alert_tx_clone = alert_tx.clone();
         let alert_dispatcher = alert_dispatcher.clone();
@@ -183,7 +183,7 @@ async fn main() -> Result<()> {
         })
     };
 
-    let self_check_task = {
+    let mut self_check_task = {
         let cancel = cancel_token.clone();
         let config = config.clone();
         let alert_tx = alert_tx.clone();
@@ -199,7 +199,7 @@ async fn main() -> Result<()> {
         })
     };
 
-    let http_api_task = {
+    let mut http_api_task = {
         let cancel = cancel_token.clone();
         let config = config.clone();
         let alert_tx = alert_tx.clone();
@@ -230,11 +230,15 @@ async fn main() -> Result<()> {
                 cancel.cancelled().await;
                 return;
             }
-            let server = ctl::CtlServer::new(config.clone(), storage);
+            let server = Arc::new(ctl::CtlServer::new(config.clone(), storage));
             let cancel_c = cancel.clone();
             if let Err(e) = supervise_task(
                 "ctl",
-                move || server.run(cancel_c.clone()),
+                move || {
+                    let server = Arc::clone(&server);
+                    let cancel = cancel_c.clone();
+                    async move { server.run(cancel).await }
+                },
                 cancel,
                 alert_tx,
             ).await {

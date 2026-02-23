@@ -143,7 +143,7 @@ impl MonitorEngine {
         )?;
         
         Ok(Self {
-            config,
+            config: config.clone(),
             cpu_monitor: CpuMonitor::new()?,
             memory_monitor: MemoryMonitor::new()?,
             network_monitor: NetworkMonitor::new(config.anomaly.suspicious_connections_per_ip)?,
@@ -194,9 +194,9 @@ impl MonitorEngine {
 
     pub async fn collect_metrics(&self) -> Result<Metrics> {
         let cpu_monitor = self.cpu_monitor.clone();
-        let memory_monitor = self.memory_monitor.clone();
-        let network_monitor = self.network_monitor.clone();
-        let auth_monitor = self.auth_monitor.clone();
+        let mut memory_monitor = self.memory_monitor.clone();
+        let mut network_monitor = self.network_monitor.clone();
+        let mut auth_monitor = self.auth_monitor.clone();
         let disk_io_monitor = self.disk_io_monitor.clone();
 
         // Disk is cached (in-memory RwLock) — collect before join! to avoid mixed-type inference issues
