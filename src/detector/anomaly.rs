@@ -337,6 +337,7 @@ mod tests {
             connection_spike_threshold: 5_000,
             suspicious_ip_threshold: 2,
             high_load_threshold: 5.0,
+            suspicious_connections_per_ip: 50,
         };
         let detector = AnomalyDetector::from_config(&cfg);
 

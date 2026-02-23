@@ -69,6 +69,7 @@ mod tests {
     use crate::action::r#trait::Action;
     use crate::config::MonitorType;
     use crate::detector::{IncidentMetadata, IncidentSeverity};
+    use anyhow::Result;
     use async_trait::async_trait;
     use std::sync::Arc;
 

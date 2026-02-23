@@ -117,7 +117,7 @@ impl Action for ScriptAction {
 mod tests {
     use super::*;
     use crate::action::r#trait::ActionContext;
-    use crate::config::{Config, OldActionConfig, OldActionType};
+    use crate::config::{Config, ActionConfig, OldActionType};
     use crate::detector::{Incident, IncidentMetadata, IncidentSeverity};
     use crate::config::MonitorType;
     use std::collections::HashMap;
@@ -144,7 +144,7 @@ mod tests {
         let mut actions = HashMap::new();
         actions.insert(
             "run_script".to_string(),
-            OldActionConfig {
+            ActionConfig {
                 action_type: OldActionType::Script,
                 action: path.to_string(),
             },
