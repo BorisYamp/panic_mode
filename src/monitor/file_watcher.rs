@@ -158,8 +158,8 @@ mod tests {
         // Wait for event
         tokio::time::sleep(Duration::from_millis(100)).await;
         
-        // Check count
-        let count = watcher.get_event_count(&[temp_dir.path().to_string_lossy().to_string()]).await;
+        // Check count — events are stored by FILE path, not by directory path.
+        let count = watcher.get_event_count(&[test_file.to_string_lossy().to_string()]).await;
         assert!(count > 0);
     }
 }

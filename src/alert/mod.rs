@@ -849,14 +849,18 @@ mod tests {
     async fn test_retry_succeeds_on_second_attempt() {
         let server = MockServer::start().await;
 
-        // First call fails, second succeeds
+        // wiremock uses LIFO priority: last-registered mock wins.
+        // Register the 200-OK mock first (lower priority) so it serves the retry.
+        // Register the 500 mock second (higher priority, fires only once) so it
+        // handles the initial attempt, then exhausts and falls through to the 200 mock.
         Mock::given(matchers::method("POST"))
-            .respond_with(ResponseTemplate::new(500))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"ok": true})))
             .expect(1)
             .mount(&server)
             .await;
         Mock::given(matchers::method("POST"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"ok": true})))
+            .respond_with(ResponseTemplate::new(500))
+            .up_to_n_times(1)
             .expect(1)
             .mount(&server)
             .await;
