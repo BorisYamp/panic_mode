@@ -200,7 +200,8 @@ mod tests {
         let ctx = ActionContext::new(&incident);
         let result = action.execute(&ctx).await;
         assert!(result.is_err(), "non-zero exit must return Err");
-        assert!(result.unwrap_err().to_string().contains("42"));
+        let err = result.unwrap_err().to_string();
+        assert!(err.contains("42"), "expected error containing '42', got: {err}");
     }
 
     #[tokio::test]
