@@ -845,9 +845,7 @@ mod tests {
         assert!(result.is_err(), "500 from Telegram must return Err");
     }
 
-    // start_paused = true: tokio auto-advances its virtual clock when all tasks are
-    // blocked on timers, so the 1-second retry sleep completes instantly in wall time.
-    #[tokio::test(start_paused = true)]
+    #[tokio::test]
     async fn test_retry_succeeds_on_second_attempt() {
         let server = MockServer::start().await;
 
